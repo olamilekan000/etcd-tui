@@ -93,6 +93,15 @@ Create a config file at `~/.etcd-tui/config.json`:
 }
 ```
 
+**With Username/Password Authentication:**
+```json
+{
+  "endpoints": "http://localhost:2379",
+  "username": "myuser",
+  "password": "mypassword"
+}
+```
+
 You can also specify a custom config path:
 ```bash
 etcd-tui -config /path/to/config.json
@@ -117,6 +126,14 @@ export ETCDCTL_CACERT=/path/to/ca/cert.pem
 export ETCDCTL_KEY=/path/to/client/key.pem
 export ETCDCTL_CERT=/path/to/client/cert.pem
 ```
+
+**With Username/Password Authentication:**
+```bash
+export ETCDCTL_ENDPOINTS=http://localhost:2379
+export ETCDCTL_USER=myuser
+export ETCDCTL_PASSWORD=mypassword
+```
+
 
 **Priority:** Config file (if specified) > Default config file (`~/.etcd-tui/config.json`) > Environment variables
 

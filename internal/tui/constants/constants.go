@@ -9,7 +9,7 @@ var LogoString = strings.Join([]string{
 }, "\n")
 
 const (
-	Version        = "v0.0.3"
+	Version        = "v0.0.4"
 	MinPaneWidth   = 20
 	MinSplitRatio  = 0.2
 	MaxSplitRatio  = 0.8

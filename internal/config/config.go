@@ -13,6 +13,8 @@ type Config struct {
 	CACert    string `json:"cacert"`
 	Key       string `json:"key"`
 	Cert      string `json:"cert"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
 }
 
 const configDir = ".etcd-tui"
@@ -23,7 +25,6 @@ var (
 	configPathMutex  sync.RWMutex
 )
 
-// SetConfigPath sets a custom config file path.
 func SetConfigPath(path string) {
 	configPathMutex.Lock()
 	defer configPathMutex.Unlock()
@@ -121,4 +122,20 @@ func GetCert() string {
 		return cfg.Cert
 	}
 	return os.Getenv("ETCDCTL_CERT")
+}
+
+func GetUsername() string {
+	cfg, _ := Load()
+	if cfg != nil && cfg.Username != "" {
+		return cfg.Username
+	}
+	return os.Getenv("ETCDCTL_USER")
+}
+
+func GetPassword() string {
+	cfg, _ := Load()
+	if cfg != nil && cfg.Password != "" {
+		return cfg.Password
+	}
+	return os.Getenv("ETCDCTL_PASSWORD")
 }

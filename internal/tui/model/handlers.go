@@ -545,12 +545,6 @@ func (m Model) handleKeysMsg(msg etcd.KeysMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	for i := range msg.Keys {
-		msg.Keys[i].Key = utils.SanitizeForTUI(msg.Keys[i].Key)
-		msg.Keys[i].Value = utils.SanitizeForTUI(msg.Keys[i].Value)
-		msg.Keys[i].ValuePreview = utils.SanitizeForTUI(msg.Keys[i].ValuePreview)
-	}
-
 	if m.FetchingAllKeys {
 		m.AllKeys = msg.Keys
 		m.FetchingAllKeys = false
