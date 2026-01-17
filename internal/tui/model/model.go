@@ -42,6 +42,15 @@ type Model struct {
 
 	LastFilterValue string
 
+	FetchingAllKeys bool
+	FilterTriggered bool
+
+	PreFilterAllKeys        []etcd.KeyValue
+	PreFilterCursor         int
+	PreFilterYOffset        int
+	PreFilterLastFetchedKey string
+	PreFilterHasMoreKeys    bool
+
 	ShowValue      bool
 	FormattedValue string
 	ValueViewport  int
@@ -72,20 +81,23 @@ func New() Model {
 	keyHelp := "q r / tab ↑↓ g/G enter esc"
 
 	return Model{
-		EtcdRepo:       etcd.NewRepository(),
-		AllKeys:        []etcd.KeyValue{},
-		FilteredKeys:   []etcd.KeyValue{},
-		LastFetchedKey: "",
-		HasMoreKeys:    true,
-		FetchingKeys:   false,
-		Connected:      false,
-		Cursor:         0,
-		TableYOffset:   0,
-		Endpoint:       endpoint,
-		Status:         status,
-		Focus:          constants.FocusTable,
-		SplitRatio:     0.5,
-		TotalKeys:      -1,
+		EtcdRepo:         etcd.NewRepository(),
+		AllKeys:          []etcd.KeyValue{},
+		FilteredKeys:     []etcd.KeyValue{},
+		LastFetchedKey:   "",
+		HasMoreKeys:      true,
+		FetchingKeys:     false,
+		Connected:        false,
+		Cursor:           0,
+		TableYOffset:     0,
+		Endpoint:         endpoint,
+		Status:           status,
+		Focus:            constants.FocusTable,
+		SplitRatio:       0.5,
+		TotalKeys:        -1,
+		FetchingAllKeys:  false,
+		FilterTriggered:  false,
+		PreFilterAllKeys: []etcd.KeyValue{},
 
 		Header: header.New(constants.LogoString, "", endpoint, constants.Version, keyHelp),
 		Filter: filter.New(status),
@@ -182,19 +194,26 @@ func (m Model) handleFilterUpdate(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.KeyMsg:
 		key := msg.String()
 
-		if key == "esc" {
+		if key == constants.KeyEsc {
 			m.Filter.BlurAndClear()
-			m.applyFilter()
+			cmd := (&m).applyFilter(false)
 			m.Focus = constants.FocusTable
 			m.updateKeyHelp()
-			return m, nil
+			return m, cmd
 		}
-		if key == "enter" || key == "tab" {
-			m.blurFilterAndFocusTable()
+		if key == constants.KeyEnter {
+			m.Filter.Blur()
+			m.Focus = constants.FocusTable
+			m.updateKeyHelp()
+			cmd := (&m).applyFilter(true)
+			return m, cmd
+		}
+		if key == constants.KeyTab {
+			paginationCmd := m.blurFilterAndFocusTable()
 			result, cmd := m.handleKey(msg)
-			return result.(Model), cmd
+			return result.(Model), tea.Batch(cmd, paginationCmd)
 		}
-		if key == "up" || key == "down" || key == "left" || key == "right" {
+		if key == constants.KeyUp || key == constants.KeyDown || key == constants.KeyLeft || key == constants.KeyRight {
 			m.Filter.Blur()
 			m.Focus = constants.FocusTable
 			m.updateKeyHelp()
@@ -204,9 +223,9 @@ func (m Model) handleFilterUpdate(msg tea.Msg) (Model, tea.Cmd) {
 
 		var filterCmd tea.Cmd
 		m.Filter, filterCmd = m.Filter.Update(msg)
-		m.applyFilter()
+		paginationCmd := (&m).applyFilter(false)
 		m.updateKeyHelp()
-		return m, filterCmd
+		return m, tea.Batch(filterCmd, paginationCmd)
 
 	default:
 		var filterCmd tea.Cmd
@@ -324,6 +343,10 @@ func (m Model) handleClipboardMsg(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m Model) checkPagination() (Model, tea.Cmd) {
+	if m.FilterTriggered || m.FetchingAllKeys {
+		return m, nil
+	}
+
 	if !m.FetchingKeys && m.HasMoreKeys && len(m.AllKeys) > 0 {
 		threshold := len(m.AllKeys) - 10
 		if threshold < 0 {
@@ -336,7 +359,7 @@ func (m Model) checkPagination() (Model, tea.Cmd) {
 				return m, m.EtcdRepo.FetchKeys(m.LastFetchedKey, 100)
 			}
 		} else {
-			if m.Cursor >= threshold {
+			if m.Cursor >= threshold && m.Cursor < len(m.FilteredKeys) && len(m.FilteredKeys) == len(m.AllKeys) {
 				m.FetchingKeys = true
 				return m, m.EtcdRepo.FetchKeys(m.LastFetchedKey, 100)
 			}

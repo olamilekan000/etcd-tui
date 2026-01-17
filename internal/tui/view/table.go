@@ -110,6 +110,11 @@ func renderTableHeader(data TableViewData, width int) string {
 	keyH := style.TableHeader.Render("Key")
 	valH := style.TableHeader.Render("Value")
 
+	if !data.Filter.HasFilterText() {
+		rowNumberSpace := "     "
+		keyH = rowNumberSpace + keyH
+	}
+
 	if lipgloss.Width(keyH) > kWidth {
 		keyH = utils.Truncate(keyH, kWidth)
 	}
@@ -184,12 +189,10 @@ func renderRow(idx int, data TableViewData, width int) string {
 	selected := idx == data.Cursor
 	cursor := getCursorIndicator(selected)
 
-	// Mode: Narrow (Keys only)
 	if data.ShowValue {
 		return renderKeyOnlyRow(idx, kv, cursor, width, selected)
 	}
 
-	// Mode: Wide (Key + Value)
 	return renderFullRow(idx, kv, cursor, data, width, selected)
 }
 
@@ -230,7 +233,7 @@ func renderFullRow(idx int, kv etcd.KeyValue, cursor string, data TableViewData,
 	}
 
 	if selected {
-		return renderSelectedRow(cursor, keyContent, valContent, width)
+		return renderSelectedRow(cursor, keyContent, valContent, kWidth, vWidth, width)
 	}
 
 	keyDisplay := truncateString(keyContent, kWidth-2)
@@ -303,15 +306,27 @@ func calculateNormalColumnWidths(width int) (keyColWidth, valueColWidth int) {
 	return keyColWidth, valueColWidth
 }
 
-func renderSelectedRow(cursor, key, val string, width int) string {
-	content := cursor + key + ColumnGap + val
-	truncated := utils.Truncate(content, width)
-	padded := truncated + strings.Repeat(" ", utils.Max(0, width-lipgloss.Width(truncated)))
+func renderSelectedRow(cursor, key, val string, kWidth, vWidth, width int) string {
+	const gap = "  "
+
+	keyDisplay := truncateString(key, kWidth)
+	valDisplay := truncateString(val, vWidth)
+
+	keyPadded := padToWidth(keyDisplay, kWidth)
+	rowContent := cursor + keyPadded + gap + valDisplay
+
+	if lipgloss.Width(rowContent) > width {
+		rowContent = utils.Truncate(rowContent, width)
+	}
+
+	remaining := width - lipgloss.Width(rowContent)
+	if remaining > 0 {
+		rowContent += strings.Repeat(" ", remaining)
+	}
 
 	return style.SelectedRow.
-		MaxWidth(width).
 		MaxHeight(1).
-		Render(padded) + "\n"
+		Render(rowContent) + "\n"
 }
 
 func getCursorIndicator(isSelected bool) string {
@@ -349,10 +364,12 @@ func RenderValueView(data ValueViewData) string {
 	}
 
 	tableWidth := calculatePaneWidth(data.Width, data.SplitRatio, true)
-	valueWidth := data.Width - tableWidth - 3
+	separatorWidth := lipgloss.Width(style.Separator.Render(constants.TableSeparator))
+	valueWidth := data.Width - tableWidth - separatorWidth
 	valueWidth = utils.Max(constants.MinPaneWidth, valueWidth)
 
 	var b strings.Builder
+	b.WriteString("\n")
 	title := lipgloss.NewStyle().Bold(true).Render("Value") + ": " + data.SelectedKey
 	if data.IsJSON {
 		title += " " + style.Badge.Render("[JSON]")
@@ -365,7 +382,7 @@ func RenderValueView(data ValueViewData) string {
 
 	renderValueContent(&b, lines, data.ValueViewport, availableHeight, valueWidth)
 
-	return lipgloss.NewStyle().Width(valueWidth).Render(b.String())
+	return b.String()
 }
 
 func wrapOrSplitValue(data ValueViewData, width int) []string {
@@ -451,13 +468,6 @@ func buildValueFooter(start, end, totalLines, maxVisibleLines int) string {
 
 func RenderSplitView(tableContent, valueContent string, width int, splitRatio float64, draggingSplit bool) string {
 	tableWidth := calculatePaneWidth(width, splitRatio, true)
-	valueWidth := width - tableWidth - 3
-	valueWidth = utils.Max(constants.MinPaneWidth, valueWidth)
-
-	tableLines := strings.Split(tableContent, "\n")
-	valueLines := strings.Split(valueContent, "\n")
-
-	maxHeight := utils.Max(len(tableLines), len(valueLines))
 
 	separator := constants.TableSeparator
 	separatorStyle := style.Separator
@@ -466,15 +476,30 @@ func RenderSplitView(tableContent, valueContent string, width int, splitRatio fl
 		separatorStyle = style.SeparatorDrag
 	}
 
+	separatorRendered := separatorStyle.Render(separator)
+	separatorWidth := lipgloss.Width(separatorRendered)
+
+	valueWidth := width - tableWidth - separatorWidth
+	valueWidth = utils.Max(constants.MinPaneWidth, valueWidth)
+
+	tableLines := strings.Split(tableContent, "\n")
+	valueLines := strings.Split(valueContent, "\n")
+
+	maxHeight := utils.Max(len(tableLines), len(valueLines))
+
 	var result strings.Builder
 	for i := 0; i < maxHeight; i++ {
 		tableLine := getOrEmpty(tableLines, i)
-		tableLine = padOrTruncateLine(tableLine, tableWidth)
-
 		valueLine := getOrEmpty(valueLines, i)
+
+		if i == 0 && strings.TrimSpace(tableLine) == "" && strings.TrimSpace(valueLine) == "" {
+			result.WriteString("\n")
+			continue
+		}
+
+		tableLine = padOrTruncateLine(tableLine, tableWidth)
 		valueLine = padOrTruncateLine(valueLine, valueWidth)
 
-		separatorRendered := separatorStyle.Render(separator)
 		combinedLine := tableLine + separatorRendered + valueLine
 
 		combinedWidth := lipgloss.Width(combinedLine)
