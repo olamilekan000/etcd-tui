@@ -1,0 +1,43 @@
+version: 2
+
+project_name: etcd-tui
+
+builds:
+  - id: etcd-tui
+    main: ./main.go
+    binary: etcd-tui
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    env:
+      - CGO_ENABLED=0
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+    format_overrides:
+      - goos: windows
+        format: zip
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: olamilekan000
+    name: etcd-tui
+  draft: false
+  prerelease: auto
