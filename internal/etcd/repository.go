@@ -19,6 +19,7 @@ import (
 type Repository interface {
 	Connect() tea.Msg
 	FetchKeys(startKey string, limit int) tea.Cmd
+	FetchAllKeys() tea.Cmd
 	FetchTotalCount() tea.Cmd
 	FetchValue(key string) tea.Cmd
 	SetClient(client *clientv3.Client)
@@ -183,6 +184,53 @@ func (r *repository) FetchKeys(startKey string, limit int) tea.Cmd {
 		return KeysMsg{
 			Keys:    kvPairs,
 			HasMore: hasMore,
+		}
+	}
+}
+
+func (r *repository) FetchAllKeys() tea.Cmd {
+	return func() tea.Msg {
+		if r.client == nil {
+			return KeysMsg{Err: fmt.Errorf("etcd client not initialized")}
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		opts := []clientv3.OpOption{
+			clientv3.WithPrefix(),
+			clientv3.WithSort(clientv3.SortByKey, clientv3.SortAscend),
+		}
+
+		resp, err := r.client.Get(ctx, "", opts...)
+		if err != nil {
+			return KeysMsg{Err: err}
+		}
+
+		kvPairs := make([]KeyValue, 0, len(resp.Kvs))
+
+		for _, kv := range resp.Kvs {
+			keyStr := utils.SanitizeForTUI(string(kv.Key))
+			valueStr := utils.SanitizeForTUI(string(kv.Value))
+			valueStr = strings.TrimSpace(valueStr)
+
+			var preview string
+			if len(valueStr) == 0 {
+				preview = "no value"
+			} else {
+				preview = utils.NormalizeForDisplay(valueStr, 50)
+			}
+
+			kvPairs = append(kvPairs, KeyValue{
+				Key:          keyStr,
+				Value:        valueStr,
+				ValuePreview: preview,
+			})
+		}
+
+		return KeysMsg{
+			Keys:    kvPairs,
+			HasMore: false,
 		}
 	}
 }

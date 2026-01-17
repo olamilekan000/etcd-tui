@@ -18,14 +18,20 @@ import (
 
 func (m *Model) filterKeys() []etcd.KeyValue {
 	filterValue := m.Filter.Value()
-	if filterValue == "" {
-		if len(m.AllKeys) == 0 {
-			return []etcd.KeyValue{}
-		}
-		return m.AllKeys[:len(m.AllKeys):len(m.AllKeys)]
+
+	keysToFilter := m.AllKeys
+	if m.FilterTriggered {
+		keysToFilter = m.AllKeys
 	}
 
-	estimatedCapacity := len(m.AllKeys) / 2
+	if filterValue == "" {
+		if len(keysToFilter) == 0 {
+			return []etcd.KeyValue{}
+		}
+		return keysToFilter[:len(keysToFilter):len(keysToFilter)]
+	}
+
+	estimatedCapacity := len(keysToFilter) / 2
 	if estimatedCapacity > 1000 {
 		estimatedCapacity = 1000
 	}
@@ -34,8 +40,8 @@ func (m *Model) filterKeys() []etcd.KeyValue {
 	filterLower := strings.ToLower(filterValue)
 	filterLen := len(filterLower)
 
-	for i := range m.AllKeys {
-		kv := &m.AllKeys[i]
+	for i := range keysToFilter {
+		kv := &keysToFilter[i]
 
 		if len(kv.Key) < filterLen && len(kv.Value) < filterLen {
 			continue
@@ -53,37 +59,56 @@ func (m *Model) filterKeys() []etcd.KeyValue {
 	return filtered
 }
 
-func (m *Model) applyFilter() {
-	oldCursor := m.Cursor
-	if oldCursor < 0 {
-		oldCursor = 0
-	}
-
+func (m *Model) applyFilter(triggerFetch bool) tea.Cmd {
 	currentFilterValue := m.Filter.Value()
 
-	if currentFilterValue == m.LastFilterValue && len(m.FilteredKeys) > 0 && m.LastFilterValue != "" {
-		return
+	if currentFilterValue == "" {
+		if m.FilterTriggered && len(m.PreFilterAllKeys) > 0 {
+			m.AllKeys = m.PreFilterAllKeys
+			m.Cursor = m.PreFilterCursor
+			m.TableYOffset = m.PreFilterYOffset
+			m.LastFetchedKey = m.PreFilterLastFetchedKey
+			m.HasMoreKeys = m.PreFilterHasMoreKeys
+
+			m.PreFilterAllKeys = nil
+			m.FilterTriggered = false
+
+			m.FilteredKeys = make([]etcd.KeyValue, len(m.AllKeys))
+			copy(m.FilteredKeys, m.AllKeys)
+
+			if m.Cursor >= len(m.FilteredKeys) {
+				m.Cursor = len(m.FilteredKeys) - 1
+			}
+			if m.Cursor < 0 {
+				m.Cursor = 0
+			}
+
+			m.fixTableViewport()
+			m.updateStatus()
+		} else if !m.FilterTriggered {
+			m.FilteredKeys = make([]etcd.KeyValue, len(m.AllKeys))
+			copy(m.FilteredKeys, m.AllKeys)
+		}
+		return nil
 	}
 
-	m.FilteredKeys = m.filterKeys()
+	if !m.FilterTriggered {
+		m.PreFilterAllKeys = make([]etcd.KeyValue, len(m.AllKeys))
+		copy(m.PreFilterAllKeys, m.AllKeys)
+		m.PreFilterCursor = m.Cursor
+		m.PreFilterYOffset = m.TableYOffset
+		m.PreFilterLastFetchedKey = m.LastFetchedKey
+		m.PreFilterHasMoreKeys = m.HasMoreKeys
 
-	m.LastFilterValue = currentFilterValue
-
-	if len(m.FilteredKeys) == 0 {
-		m.Cursor = 0
-		m.TableYOffset = 0
-		return
+		m.FilterTriggered = true
 	}
 
-	if oldCursor >= len(m.FilteredKeys) {
-		m.Cursor = len(m.FilteredKeys) - 1
-	} else if oldCursor >= 0 {
-		m.Cursor = oldCursor
-	} else {
-		m.Cursor = 0
+	if triggerFetch && !m.FetchingAllKeys {
+		m.FetchingAllKeys = true
+		return m.EtcdRepo.FetchAllKeys()
 	}
 
-	m.fixTableViewport()
+	return nil
 }
 
 func (m *Model) getMaxVisibleRows() int {
@@ -251,11 +276,12 @@ func (m *Model) jumpToBottomOfValue() {
 	m.ValueViewport = utils.Max(0, len(lines)-maxVisibleLines)
 }
 
-func (m *Model) blurFilterAndFocusTable() {
+func (m *Model) blurFilterAndFocusTable() tea.Cmd {
 	m.Filter.Blur()
-	m.applyFilter()
+	cmd := m.applyFilter(false)
 	m.Focus = constants.FocusTable
 	m.updateKeyHelp()
+	return cmd
 }
 
 func (m *Model) ensureTableFocus() {
@@ -283,9 +309,9 @@ func (m Model) handleFilterFocus() (tea.Model, tea.Cmd) {
 func (m Model) handleEscape() (tea.Model, tea.Cmd) {
 	if m.Filter.Focused() {
 		m.Filter.BlurAndClear()
-		m.applyFilter()
+		cmd := (&m).applyFilter(false)
 		m.updateKeyHelp()
-		return m, nil
+		return m, cmd
 	}
 	if m.ShowValue {
 		m.clearValueView()
@@ -420,31 +446,31 @@ func (m Model) handleSplitAdjust(delta float64) (tea.Model, tea.Cmd) {
 
 func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "ctrl+c", "q":
+	case constants.KeyCtrlC, constants.KeyQ:
 		return m.handleQuit()
-	case "/":
+	case constants.KeySlash:
 		return m.handleFilterFocus()
-	case "esc":
+	case constants.KeyEsc:
 		return m.handleEscape()
-	case "enter":
+	case constants.KeyEnter:
 		return m.handleEnter()
-	case "tab":
+	case constants.KeyTab:
 		return m.handleTab()
-	case "up", "k":
+	case constants.KeyUp, constants.KeyK:
 		return m.handleUp()
-	case "down", "j":
+	case constants.KeyDown, constants.KeyJ:
 		return m.handleDown()
-	case "r", "R":
+	case constants.KeyR, constants.KeyRCaps:
 		return m.handleRefresh()
-	case "g":
+	case constants.KeyG:
 		return m.handleJumpToTop()
-	case "G":
+	case constants.KeyGCaps:
 		return m.handleJumpToBottom()
-	case "left", "h":
+	case constants.KeyLeft, constants.KeyH:
 		return m.handleSplitAdjust(-constants.SplitAdjustInc)
-	case "right", "l":
+	case constants.KeyRight, constants.KeyL:
 		return m.handleSplitAdjust(constants.SplitAdjustInc)
-	case "c", "y":
+	case constants.KeyC, constants.KeyY:
 		return m.handleCopy()
 	}
 	return m, nil
@@ -525,40 +551,66 @@ func (m Model) handleKeysMsg(msg etcd.KeysMsg) (tea.Model, tea.Cmd) {
 		msg.Keys[i].ValuePreview = utils.SanitizeForTUI(msg.Keys[i].ValuePreview)
 	}
 
-	if len(msg.Keys) > 0 {
-		m.LastFetchedKey = msg.Keys[len(msg.Keys)-1].Key
-		m.HasMoreKeys = msg.HasMore
+	if m.FetchingAllKeys {
+		m.AllKeys = msg.Keys
+		m.FetchingAllKeys = false
 
-		existingKeys := make(map[string]bool, len(m.AllKeys))
-		for _, kv := range m.AllKeys {
-			existingKeys[kv.Key] = true
-		}
-
-		for _, kv := range msg.Keys {
-			if !existingKeys[kv.Key] {
-				m.AllKeys = append(m.AllKeys, kv)
+		if m.FilterTriggered {
+			m.FilteredKeys = m.filterKeys()
+			if len(m.FilteredKeys) > 0 && m.Cursor >= len(m.FilteredKeys) {
+				m.Cursor = len(m.FilteredKeys) - 1
 			}
+			m.fixTableViewport()
 		}
-	} else {
-		m.HasMoreKeys = false
+	} else if !m.FilterTriggered {
+		if len(msg.Keys) > 0 {
+			m.LastFetchedKey = msg.Keys[len(msg.Keys)-1].Key
+			m.HasMoreKeys = msg.HasMore
+
+			existingKeys := make(map[string]bool, len(m.AllKeys))
+			for _, kv := range m.AllKeys {
+				existingKeys[kv.Key] = true
+			}
+
+			for _, kv := range msg.Keys {
+				if !existingKeys[kv.Key] {
+					m.AllKeys = append(m.AllKeys, kv)
+				}
+			}
+		} else {
+			m.HasMoreKeys = false
+		}
+
+		m.FetchingKeys = false
+		m.FilteredKeys = make([]etcd.KeyValue, len(m.AllKeys))
+		copy(m.FilteredKeys, m.AllKeys)
+
+		oldLastFilterValue := m.LastFilterValue
+		m.LastFilterValue = ""
+
+		paginationCmd := (&m).applyFilter(false)
+
+		m.LastFilterValue = oldLastFilterValue
+
+		if len(m.FilteredKeys) > 0 && m.Cursor >= len(m.FilteredKeys) {
+			m.Cursor = len(m.FilteredKeys) - 1
+		}
+
+		m.fixTableViewport()
+		m.updateStatus()
+		m.Filter.SetPrefix(m.Status)
+		m.LastRefresh = time.Now()
+		m.updateKeyHelp()
+
+		if paginationCmd != nil {
+			return m, paginationCmd
+		}
 	}
 
-	m.FetchingKeys = false
-
-	oldLastFilterValue := m.LastFilterValue
-	m.LastFilterValue = ""
-	m.applyFilter()
-	m.LastFilterValue = oldLastFilterValue
-
-	if len(m.FilteredKeys) > 0 && m.Cursor >= len(m.FilteredKeys) {
-		m.Cursor = len(m.FilteredKeys) - 1
-	}
-
-	m.fixTableViewport()
 	m.updateStatus()
 	m.Filter.SetPrefix(m.Status)
-	m.LastRefresh = time.Now()
 	m.updateKeyHelp()
+
 	return m, nil
 }
 
