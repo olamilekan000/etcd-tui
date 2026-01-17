@@ -122,7 +122,6 @@ func renderTableHeader(data TableViewData, width int) string {
 		valH = utils.Truncate(valH, vWidth)
 	}
 
-	// Pad to fixed widths for perfect alignment
 	keyH = padToWidth(keyH, kWidth)
 	valH = padToWidth(valH, vWidth)
 

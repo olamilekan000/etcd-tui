@@ -169,7 +169,6 @@ func (m Model) View() string {
 		content = view.RenderTable(tableData)
 	}
 
-	// Build sections - use string concatenation to preserve header's internal layout
 	var sections []string
 	sections = append(sections, header)
 	if m.Error != nil {
@@ -179,8 +178,6 @@ func (m Model) View() string {
 	sections = append(sections, content)
 
 	result := strings.Join(sections, "")
-
-	// Ensure output doesn't exceed terminal height
 	lines := strings.Split(result, "\n")
 	if len(lines) > m.Height {
 		lines = lines[:m.Height]
@@ -404,7 +401,6 @@ func (m Model) getValueViewData(contentHeight int) view.ValueViewData {
 	}
 }
 
-// calculateTableWidth calculates the table width using the same logic as the view package
 func (m Model) calculateTableWidth() int {
 	if !m.ShowValue {
 		return m.Width

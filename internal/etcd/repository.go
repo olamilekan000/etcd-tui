@@ -81,12 +81,21 @@ func (r *repository) Connect() tea.Msg {
 		}
 	}
 
-	client, err := clientv3.New(clientv3.Config{
+	username := config.GetUsername()
+	password := config.GetPassword()
+
+	clientConfig := clientv3.Config{
 		Endpoints:   endpointsList,
 		DialTimeout: 5 * time.Second,
 		TLS:         tlsConfig,
-	})
+	}
 
+	if username != "" && password != "" {
+		clientConfig.Username = username
+		clientConfig.Password = password
+	}
+
+	client, err := clientv3.New(clientConfig)
 	if err != nil {
 		return ConnectionMsg{Success: false, Err: fmt.Errorf("failed to create etcd client: %w", err)}
 	}
