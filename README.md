@@ -2,7 +2,7 @@
 
 A modern terminal interface for interacting with your etcd database. Navigate keys, view values, filter data, and manage your etcd cluster directly from your terminal.
 
-![etcd-tui](etcd-tui.png)
+![etcd-tui](etcd-tui.gif)
 
 ## Features
 
