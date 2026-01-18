@@ -17,6 +17,11 @@ const (
 )
 
 const (
+	HeaderPadding  = 2 // Padding for headers, titles, and separator lines
+	ContentPadding = 4 // Padding for content wrapping and truncation
+)
+
+const (
 	TableSeparator = " │ "
 )
 

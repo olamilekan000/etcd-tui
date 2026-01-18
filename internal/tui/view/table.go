@@ -93,10 +93,10 @@ func renderTableHeader(data TableViewData, width int) string {
 	if data.ShowValue {
 		title := "Keys"
 		headerRendered := style.TableHeader.Render(title)
-		if lipgloss.Width(headerRendered) > width-2 {
-			headerRendered = utils.Truncate(headerRendered, width-2)
+		if lipgloss.Width(headerRendered) > width-constants.HeaderPadding {
+			headerRendered = utils.Truncate(headerRendered, width-constants.HeaderPadding)
 		}
-		return headerRendered + "\n" + strings.Repeat("─", width-2) + "\n"
+		return headerRendered + "\n" + strings.Repeat("─", width-constants.HeaderPadding) + "\n"
 	}
 
 	availableWidth := width - 3
@@ -125,7 +125,7 @@ func renderTableHeader(data TableViewData, width int) string {
 	keyH = padToWidth(keyH, kWidth)
 	valH = padToWidth(valH, vWidth)
 
-	return keyH + ColumnGap + valH + "\n" + strings.Repeat("─", width-2) + "\n"
+	return keyH + ColumnGap + valH + "\n" + strings.Repeat("─", width-constants.HeaderPadding) + "\n"
 }
 
 func calculateVisibleIndices(data TableViewData, maxRows int) (startIdx, endIdx int) {
@@ -373,8 +373,8 @@ func RenderValueView(data ValueViewData) string {
 	if data.IsJSON {
 		title += " " + style.Badge.Render("[JSON]")
 	}
-	b.WriteString(lipgloss.NewStyle().MaxWidth(valueWidth-2).MaxHeight(1).Render(title) + "\n")
-	b.WriteString(strings.Repeat("─", valueWidth-2) + "\n")
+	b.WriteString(lipgloss.NewStyle().MaxWidth(valueWidth-constants.HeaderPadding).MaxHeight(1).Render(title) + "\n")
+	b.WriteString(strings.Repeat("─", valueWidth-constants.HeaderPadding) + "\n")
 
 	availableHeight := utils.Max(1, data.Height-2)
 	lines := wrapOrSplitValue(data, valueWidth)
@@ -390,13 +390,24 @@ func wrapOrSplitValue(data ValueViewData, width int) []string {
 		if displayValue == "" {
 			displayValue = data.SelectedValue
 		}
-		return strings.Split(displayValue, "\n")
+		lines := strings.Split(displayValue, "\n")
+		var wrappedLines []string
+		availableWidth := width - constants.ContentPadding
+		for _, line := range lines {
+			if lipgloss.Width(line) > availableWidth {
+				wrapped := utils.WrapText(line, availableWidth)
+				wrappedLines = append(wrappedLines, wrapped...)
+			} else {
+				wrappedLines = append(wrappedLines, line)
+			}
+		}
+		return wrappedLines
 	}
 	displayValue := data.SelectedValue
 	if displayValue == "" {
 		return []string{}
 	}
-	return utils.WrapText(displayValue, width-4)
+	return utils.WrapText(displayValue, width-constants.ContentPadding)
 }
 
 func renderValueContent(b *strings.Builder, lines []string, viewport, availableHeight, width int) {
@@ -430,8 +441,8 @@ func renderValueContent(b *strings.Builder, lines []string, viewport, availableH
 	contentLinesWritten := 0
 	for i := start; i < end && contentLinesWritten < maxVisibleLines; i++ {
 		line := lines[i]
-		if len(line) > width-4 {
-			line = utils.Truncate(line, width-4)
+		if len(line) > width-constants.ContentPadding {
+			line = utils.Truncate(line, width-constants.ContentPadding)
 		}
 		b.WriteString(line)
 		b.WriteString("\n")
